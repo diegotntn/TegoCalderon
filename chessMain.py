@@ -1,105 +1,122 @@
 import pygame
-import os
 import sys
 import chess
-
-# Añadir el directorio que contiene chessEngine y otros módulos a la ruta del sistema
-sys.path.append(r'C:/Users/DELL/OneDrive/Documentos/Diego/Fundamentos de IA/proyecto final/TegoCalderon/Ajedrez')
-
-import chessEngine
+import chessGui as gui
 import minmax
-
-WIDTH = HEIGHT = 600  # Aumentar el tamaño para mejor visualización
-DIMENSION = 8
-SQ_SIZE = WIDTH // DIMENSION
-MAX_FPS = 15
-IMAGES = {}
-
-# Cargar imágenes de las piezas
-def load_images():
-    pieces = ['wP', 'wR', 'wN', 'wB', 'wQ', 'wK', 'bP', 'bR', 'bN', 'bB', 'bQ', 'bK']
-    for piece in pieces:
-        IMAGES[piece] = pygame.image.load(os.path.join("images", piece + ".png")).convert_alpha()
-        IMAGES[piece] = pygame.transform.scale(IMAGES[piece], (SQ_SIZE, SQ_SIZE))
-
-def drawBoard(screen):
-    colors = [pygame.Color('#EEEED2'), pygame.Color('#769656')]  # Colores más atractivos
-    for i in range(DIMENSION):
-        for j in range(DIMENSION):
-            color = colors[(i + j) % 2]
-            pygame.draw.rect(screen, color, pygame.Rect(j * SQ_SIZE, i * SQ_SIZE, SQ_SIZE, SQ_SIZE))
-
-def highlightSquare(screen, sqSelected):
-    if sqSelected:
-        col, fila = sqSelected
-        pygame.draw.rect(screen, pygame.Color('blue'), pygame.Rect(col * SQ_SIZE, fila * SQ_SIZE, SQ_SIZE, SQ_SIZE), 4)
-
-def drawPieces(screen, board):
-    for i in range(DIMENSION):
-        for j in range(DIMENSION):
-            piece = board.piece_at(chess.square(j, DIMENSION - i - 1))
-            if piece:
-                piece_str = piece.symbol()
-                if piece_str.islower():
-                    piece_str = 'b' + piece_str.upper()
-                else:
-                    piece_str = 'w' + piece_str
-                screen.blit(IMAGES[piece_str], pygame.Rect(j * SQ_SIZE, i * SQ_SIZE, SQ_SIZE, SQ_SIZE))
-
-def drawGameState(screen, ej, sqSelected):
-    drawBoard(screen)
-    highlightSquare(screen, sqSelected)
-    drawPieces(screen, ej.board)
 
 def main():
     pygame.init()
-    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    screen = pygame.display.set_mode((gui.WIDTH + gui.BUTTON_WIDTH + 2 * gui.PADDING, gui.HEIGHT))
     pygame.display.set_caption('Ajedrez')
     clock = pygame.time.Clock()
     screen.fill(pygame.Color("White"))
-    ej = chessEngine.GameState()
 
-    load_images()  
+    gui.load_images()  
     running = True
-    sqSelected = ()
-    clicksUser = []
-    player_turn = True  # True para las blancas, False para las negras
+    sq_selected = ()
+    clicks_user = []
+    best_move = None  # Variable para almacenar el mejor movimiento
+
+    board = chess.Board()
+    move_log = []  # Lista para guardar los movimientos
+    player_color = None  # Variable para guardar el color del jugador
+    game_over = False  # Variable para indicar si el juego ha terminado
 
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            elif event.type == pygame.MOUSEBUTTONDOWN and player_turn:
+            elif event.type == pygame.MOUSEBUTTONDOWN:
                 location = pygame.mouse.get_pos()
-                col = location[0] // SQ_SIZE
-                fila = location[1] // SQ_SIZE
-                if sqSelected == (col, fila):
-                    sqSelected = ()
-                    clicksUser = []
+                if game_over:
+                    if gui.is_reset_button_clicked(location):
+                        board = chess.Board()
+                        move_log = []
+                        game_over = False
+                        if player_color == chess.BLACK:
+                            ai_move = minmax.getBestMove(board, 3)  # El AI hace el primer movimiento si el jugador es negro
+                            if ai_move:
+                                board.push(ai_move)
+                                move_log.append(ai_move)
+                elif player_color is None:
+                    # Elegir color del jugador
+                    if gui.is_button_clicked(location, 'white'):
+                        player_color = chess.WHITE
+                    elif gui.is_button_clicked(location, 'black'):
+                        player_color = chess.BLACK
+                    if player_color is not None:
+                        board = chess.Board()
+                        move_log = []  # Reiniciar el registro de movimientos
+                        best_move = None  # Limpiar el mejor movimiento al reiniciar
+                        if player_color == chess.BLACK:
+                            ai_move = minmax.getBestMove(board, 3)  # El AI hace el primer movimiento si el jugador es negro
+                            if ai_move:
+                                board.push(ai_move)
+                                move_log.append(ai_move)
                 else:
-                    sqSelected = (col, fila)
-                    clicksUser.append(sqSelected)
+                    if location[0] < gui.WIDTH:
+                        col = location[0] // gui.SQ_SIZE
+                        fila = location[1] // gui.SQ_SIZE
+                        if sq_selected == (col, fila):
+                            sq_selected = ()
+                            clicks_user = []
+                        else:
+                            sq_selected = (col, fila)
+                            clicks_user.append(sq_selected)
 
-                if len(clicksUser) == 2:
-                    start_sq = chess.square(clicksUser[0][0], DIMENSION - clicksUser[0][1] - 1)
-                    end_sq = chess.square(clicksUser[1][0], DIMENSION - clicksUser[1][1] - 1)
-                    move = chess.Move(start_sq, end_sq)
-                    if move in ej.board.legal_moves:
-                        ej.make_move(move)
-                        player_turn = False
-                    sqSelected = ()
-                    clicksUser = []
+                        if len(clicks_user) == 2:
+                            start_sq = chess.square(clicks_user[0][0], gui.DIMENSION - clicks_user[0][1] - 1)
+                            end_sq = chess.square(clicks_user[1][0], gui.DIMENSION - clicks_user[1][1] - 1)
+                            move = chess.Move(start_sq, end_sq)
+                            if move in board.legal_moves:
+                                board.push(move)
+                                move_log.append(move)  # Guardar el movimiento
+                                if board.is_checkmate():
+                                    game_over = True
+                                else:
+                                    ai_move = minmax.getBestMove(board, 3)  # Profundidad máxima de 4
+                                    if ai_move:
+                                        board.push(ai_move)
+                                        move_log.append(ai_move)  # Guardar el movimiento del AI
+                                        if board.is_checkmate():
+                                            game_over = True
+                            sq_selected = ()
+                            clicks_user = []
+                            best_move = None  # Limpiar el mejor movimiento al realizar un movimiento
+                    else:
+                        button_action = gui.handle_button_click(location, board)
+                        if button_action == 'reset':
+                            board = chess.Board()
+                            move_log = []  # Reiniciar el registro de movimientos
+                            best_move = None  # Limpiar el mejor movimiento al reiniciar
+                            if player_color == chess.BLACK:
+                                ai_move = minmax.getBestMove(board, 3)  # El AI hace el primer movimiento si el jugador es negro
+                                if ai_move:
+                                    board.push(ai_move)
+                                    move_log.append(ai_move)
+                        elif button_action == 'help':
+                            best_move = minmax.getBestMove(board, 3)  # Obtener el mejor movimiento
+                        elif button_action == 'undo':
+                            if len(move_log) > 0:
+                                board.pop()  # Deshacer el último movimiento
+                                move_log.pop()  # Eliminar el último movimiento del registro
+                                if len(move_log) > 0:
+                                    board.pop()  # Deshacer el movimiento del AI
+                                    move_log.pop()  # Eliminar el movimiento del AI del registro
+                            best_move = None  # Limpiar el mejor movimiento al deshacer
 
-        # Turno de las negras (AI)
-        if not player_turn:
-            ai_move = minmax.getBestMove(ej.board, 4)  
-            if ai_move:
-                ej.make_move(ai_move)
-            player_turn = True
-
-        drawGameState(screen, ej, sqSelected)
+        if game_over:
+            if board.turn == player_color:
+                gui.draw_end_screen(screen, "Perdiste lol")
+            else:
+                gui.draw_end_screen(screen, "Ganaste lol")
+        elif player_color is None:
+            gui.draw_color_selection(screen)
+        else:
+            gui.drawGameState(screen, board, sq_selected, best_move)
+        
         pygame.display.flip()
-        clock.tick(MAX_FPS)
+        clock.tick(gui.MAX_FPS)
 
 if __name__ == "__main__":
     main()
